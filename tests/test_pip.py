@@ -8,6 +8,7 @@ import atexit
 import textwrap
 import site
 
+from functools import wraps
 from scripttest import TestFileEnvironment, FoundDir
 from tests.path import Path, curdir, u
 from pip.util import rmtree
@@ -581,6 +582,25 @@ def assert_all_changes(start_state, end_state, expected_changes):
 
     # Don't throw away this potentially useful information
     return diff
+
+
+def without_real_prefix(fn):
+    """
+    helper to exclude sys.real_prefix inside function `fn`
+    (it allow tests to simulate out of virtualenv behavior)
+    """
+    @wraps(fn)
+    def newfn(*args, **kw):
+        try:
+            real_prefix = getattr(sys, 'real_prefix', None)
+            if real_prefix:
+                del sys.real_prefix
+            return fn(*args, **kw)
+        finally:
+            if real_prefix:
+                sys.real_prefix = real_prefix
+
+    return newfn
 
 
 def _create_test_package(env):

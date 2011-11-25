@@ -2,6 +2,7 @@
 
 import sys
 import os
+import tempfile
 from pip.backwardcompat import get_python_lib
 
 
@@ -18,9 +19,12 @@ if running_under_virtualenv():
     build_prefix = os.path.join(sys.prefix, 'build')
     src_prefix = os.path.join(sys.prefix, 'src')
 else:
-    ## FIXME: this isn't a very good default
-    build_prefix = os.path.join(os.getcwd(), 'build')
-    src_prefix = os.path.join(os.getcwd(), 'src')
+    if os.access(os.getcwd(), os.W_OK):
+        _prefix_dir = os.getcwd()
+    else:
+        _prefix_dir = tempfile.mkdtemp()
+    build_prefix = os.path.join(_prefix_dir, 'build')
+    src_prefix = os.path.join(_prefix_dir, 'src')
 
 # under Mac OS X + virtualenv sys.prefix is not properly resolved
 # it is something like /path/to/python/bin/..

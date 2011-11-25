@@ -24,6 +24,8 @@ develop (unreleased)
 
 * Fixed issue #366 - pip throws IndexError when it calls `scraped_rel_links`
 
+* Fix issue #381 - Do not use $PWD in installation proccess
+
 
 1.0.2 (2011-07-16)
 ------------------
