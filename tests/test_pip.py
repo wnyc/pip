@@ -603,6 +603,15 @@ def without_real_prefix(fn):
     return newfn
 
 
+def reload_module(module):
+    # python 3 compatible
+    try:
+        reload(module)
+    except NameError:
+        import imp
+        imp.reload(module)
+
+
 def _create_test_package(env):
     mkdir('version_pkg')
     version_pkg_path = env.scratch_path/'version_pkg'

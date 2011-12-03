@@ -3,7 +3,7 @@ import os
 import os.path
 from mock import patch
 from nose.tools import assert_equal
-from tests.test_pip import without_real_prefix
+from tests.test_pip import without_real_prefix, reload_module
 
 
 @patch('sys.prefix', '/path/to/fake/sys.prefix')
@@ -11,7 +11,7 @@ from tests.test_pip import without_real_prefix
 def test_build_prefix_and_src_prefix_should_use_sys_prefix_dir_if_under_virtualenv():
     # reload module because it was imported before the test method
     import pip.locations
-    reload(pip.locations)
+    reload_module(pip.locations)
 
     from pip.locations import build_prefix, src_prefix
 
@@ -26,7 +26,7 @@ def test_build_prefix_and_src_prefix_should_use_sys_prefix_dir_if_under_virtuale
 def test_build_prefix_and_src_prefix_should_use_default_storage_dir_if_not_under_virtualenv():
     # reload module because it was imported before the test method
     import pip.locations
-    reload(pip.locations)
+    reload_module(pip.locations)
 
     from pip.locations import build_prefix, src_prefix, default_storage_dir
 
@@ -35,4 +35,3 @@ def test_build_prefix_and_src_prefix_should_use_default_storage_dir_if_not_under
 
     assert_equal(expected_build_prefix, build_prefix)
     assert_equal(expected_src_prefix, src_prefix)
-
