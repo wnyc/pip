@@ -8,7 +8,7 @@ import atexit
 import textwrap
 import site
 
-from functools import wraps
+from pip.backwardcompat import wraps
 from scripttest import TestFileEnvironment, FoundDir
 from tests.path import Path, curdir, u
 from pip.util import rmtree

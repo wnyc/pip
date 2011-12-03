@@ -4,7 +4,7 @@ import sys
 import os
 import shutil
 
-__all__ = ['any', 'WindowsError', 'md5', 'copytree']
+__all__ = ['any', 'WindowsError', 'md5', 'copytree', 'wraps']
 
 try:
     WindowsError = WindowsError
@@ -23,6 +23,18 @@ try:
 except ImportError:
     # let's fall back as long as we can
     from pip._pkgutil import walk_packages
+
+try:
+    from functools import wraps
+except ImportError:
+    # python 2.4 compat
+    def wraps(original):
+        def inner(fn):
+            fn.__doc__ = original.__doc__
+            fn.__name__ = original.__name__
+            fn.__module__ = original.__module__
+            return fn
+        return inner
 
 try:
     any = any
