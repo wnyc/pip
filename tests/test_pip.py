@@ -586,7 +586,7 @@ def assert_all_changes(start_state, end_state, expected_changes):
 
 def without_real_prefix(fn):
     """
-    helper to exclude sys.real_prefix inside function `fn`
+    helper to exclude sys.real_prefix from the context of function `fn`
     (it allow tests to simulate out of virtualenv behavior)
     """
     @wraps(fn)

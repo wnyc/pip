@@ -1,3 +1,4 @@
+import sys
 import os
 import os.path
 from mock import patch
@@ -5,65 +6,33 @@ from nose.tools import assert_equal
 from tests.test_pip import without_real_prefix
 
 
-@patch('os.access')
-@without_real_prefix
-def test_should_use_os_access_to_check_write_permission_to_build_dir(access_mock):
-    """
-    Ensure `os.access` is called to see if user can write in the current dir
-    """
+@patch('sys.prefix', '/path/to/fake/sys.prefix')
+@patch('sys.real_prefix', '/path/to/fake/sys.real_prefix')
+def test_build_prefix_and_src_prefix_should_use_sys_prefix_dir_if_under_virtualenv():
     # reload module because it was imported before the test method
     import pip.locations
     reload(pip.locations)
 
-    access_mock.assert_called_with(os.getcwd(), os.W_OK)
-
-
-@patch('tempfile.mkdtemp')
-@patch('os.access')
-@without_real_prefix
-def test_build_prefix_should_be_in_a_temp_build_dir_if_cwd_is_not_writable(access_mock, mkdtemp_mock):
-    """
-    Test `build_prefix` is in a temporary directory when current working dir is not writable
-    """
-    access_mock.return_value = False
-    mkdtemp_mock.return_value = temp_dir = '/path/to/temp/dir'
-
-    # reload module because it was imported before the test method
-    import pip.locations
-    reload(pip.locations)
-    from pip.locations import build_prefix
-
-    assert_equal(build_prefix, os.path.join(temp_dir, 'build'))
-
-
-@patch('tempfile.mkdtemp')
-@patch('os.access')
-@without_real_prefix
-def test_src_prefix_should_be_in_cwd_even_if_cwd_is_not_writable(access_mock, mkdtemp_mock):
-    """
-    Test `src_prefix` is in current working dir even if current working dir is not writable
-    """
-    access_mock.return_value = False
-    mkdtemp_mock.return_value = '/path/to/temp/dir'
-
-    # reload module because it was imported before the test method
-    import pip.locations
-    reload(pip.locations)
-    from pip.locations import src_prefix
-
-    assert_equal(src_prefix, os.path.join(os.getcwd(), 'src'))
-
-
-@patch('os.access')
-@without_real_prefix
-def test_build_prefix_and_src_should_be_in_cwd_if_there_is_permission_to_write_in_it(access_mock):
-    access_mock.return_value = True
-
-    # reload module because it was imported before the test method
-    import pip.locations
-    reload(pip.locations)
     from pip.locations import build_prefix, src_prefix
 
-    assert_equal(build_prefix, os.path.join(os.getcwd(), 'build'))
-    assert_equal(src_prefix, os.path.join(os.getcwd(), 'src'))
+    expected_build_prefix = os.path.join(sys.prefix, 'build')
+    expected_src_prefix = os.path.join(sys.prefix, 'src')
+
+    assert_equal(expected_build_prefix, build_prefix)
+    assert_equal(expected_src_prefix, src_prefix)
+
+
+@without_real_prefix
+def test_build_prefix_and_src_prefix_should_use_default_storage_dir_if_not_under_virtualenv():
+    # reload module because it was imported before the test method
+    import pip.locations
+    reload(pip.locations)
+
+    from pip.locations import build_prefix, src_prefix, default_storage_dir
+
+    expected_build_prefix = os.path.join(default_storage_dir, 'build')
+    expected_src_prefix = os.path.join(default_storage_dir, 'src')
+
+    assert_equal(expected_build_prefix, build_prefix)
+    assert_equal(expected_src_prefix, src_prefix)
 

@@ -2,7 +2,6 @@
 
 import sys
 import os
-import tempfile
 from pip.backwardcompat import get_python_lib
 
 
@@ -12,24 +11,6 @@ def running_under_virtualenv():
 
     """
     return hasattr(sys, 'real_prefix')
-
-
-if running_under_virtualenv():
-    ## FIXME: is build/ a good name?
-    build_prefix = os.path.join(sys.prefix, 'build')
-    src_prefix = os.path.join(sys.prefix, 'src')
-else:
-    # src is always in current dir
-    src_prefix = os.path.join(os.getcwd(), 'src')
-    if os.access(os.getcwd(), os.W_OK):
-        build_prefix = os.path.join(os.getcwd(), 'build')
-    else:
-        build_prefix = os.path.join(tempfile.mkdtemp(), 'build')
-
-# under Mac OS X + virtualenv sys.prefix is not properly resolved
-# it is something like /path/to/python/bin/..
-build_prefix = os.path.abspath(build_prefix)
-src_prefix = os.path.abspath(src_prefix)
 
 # FIXME doesn't account for venv linked to global site-packages
 
@@ -52,3 +33,16 @@ else:
     # Forcing to use /usr/local/bin for standard Mac OS X framework installs
     if sys.platform[:6] == 'darwin' and sys.prefix[:16] == '/System/Library/':
         bin_py = '/usr/local/bin'
+
+if running_under_virtualenv():
+    ## FIXME: is build/ a good name?
+    build_prefix = os.path.join(sys.prefix, 'build')
+    src_prefix = os.path.join(sys.prefix, 'src')
+else:
+    build_prefix = os.path.join(default_storage_dir, 'build')
+    src_prefix = os.path.join(default_storage_dir, 'src')
+
+# under Mac OS X + virtualenv sys.prefix is not properly resolved
+# it is something like /path/to/python/bin/..
+build_prefix = os.path.abspath(build_prefix)
+src_prefix = os.path.abspath(src_prefix)
