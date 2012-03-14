@@ -1,3 +1,4 @@
+import optparse
 import os
 import sys
 import tempfile
@@ -49,7 +50,7 @@ class InstallCommand(Command):
             '-i', '--index-url', '--pypi-url',
             dest='index_url',
             metavar='URL',
-            default='http://pypi.python.org/simple/',
+            default='https://pypi.python.org/simple/',
             help='Base URL of Python Package Index (default %default)')
         self.parser.add_option(
             '--extra-index-url',
@@ -65,18 +66,24 @@ class InstallCommand(Command):
             default=False,
             help='Ignore package index (only looking at --find-links URLs instead)')
         self.parser.add_option(
+            '--no-mirrors',
+            dest='use_mirrors',
+            action='store_false',
+            default=False,
+            help='Ignore the PyPI mirrors')
+        self.parser.add_option(
             '-M', '--use-mirrors',
             dest='use_mirrors',
             action='store_true',
-            default=False,
-            help='Use the PyPI mirrors as a fallback in case the main index is down.')
+            default=True,
+            help=optparse.SUPPRESS_HELP)
         self.parser.add_option(
             '--mirrors',
             dest='mirrors',
             metavar='URL',
             action='append',
             default=[],
-            help='Specific mirror URLs to query when --use-mirrors is used')
+            help='Specific mirror URLs to use instead of querying the DNS for list of mirrors')
 
         self.parser.add_option(
             '-b', '--build', '--build-dir', '--build-directory',

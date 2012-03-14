@@ -1,29 +1,31 @@
-import sys
 import os
-import shutil
 import re
+import shutil
+import socket
+import sys
+import tempfile
+
 import zipfile
 import pkg_resources
-import tempfile
-from pip.locations import bin_py, running_under_virtualenv
+
+import requests
+
+from pip import call_subprocess
+from pip.index import Link
+from pip.log import logger
+from pip.locations import bin_py, running_under_virtualenv, build_prefix
 from pip.exceptions import (InstallationError, UninstallationError,
                             BestVersionAlreadyInstalled)
 from pip.vcs import vcs
-from pip.log import logger
-from pip.util import display_path, rmtree
-from pip.util import ask, ask_path_exists, backup_dir
-from pip.util import is_installable_dir, is_local, dist_is_local
-from pip.util import renames, normalize_path, egg_link_path
-from pip.util import make_path_relative
-from pip import call_subprocess
 from pip.backwardcompat import (any, copytree, urlparse, urllib,
                                 ConfigParser, string_types, HTTPError,
-                                FeedParser, get_python_version,
-                                b)
-from pip.index import Link
-from pip.locations import build_prefix
+                                FeedParser, get_python_version, b,
+                                WindowsError, URLError)
+from pip.util import (display_path, rmtree, ask, ask_path_exists, backup_dir,
+                      is_installable_dir, is_local, dist_is_local, renames,
+                      normalize_path, egg_link_path, make_path_relative, Inf)
 from pip.download import (get_file_content, is_url, url_to_path,
-                          path_to_url, is_archive_file,
+                          path_to_url, is_archive_file, urlopen,
                           unpack_vcs_link, is_vcs_url, is_file_url,
                           unpack_file_url, unpack_http_url)
 
@@ -44,6 +46,7 @@ class InstallRequirement(object):
         self.source_dir = source_dir
         self.editable = editable
         self.url = url
+        self.urls = []
         self._egg_info_path = None
         # This holds the pkg_resources.Distribution object if this requirement
         # is already available:
@@ -59,6 +62,8 @@ class InstallRequirement(object):
         self.install_succeeded = None
         # UninstallPathSet of uninstalled distribution (for possible rollback)
         self.uninstalled = None
+        # The server signature from PyPI
+        self._serversigs = {}
 
     @classmethod
     def from_editable(cls, editable_req, comes_from=None, default_vcs=None):
@@ -71,7 +76,8 @@ class InstallRequirement(object):
 
     @classmethod
     def from_line(cls, name, comes_from=None):
-        """Creates an InstallRequirement from a name, which might be a
+        """
+        Creates an InstallRequirement from a name, which might be a
         requirement, directory containing 'setup.py', filename, or URL.
         """
         url = None
@@ -84,7 +90,8 @@ class InstallRequirement(object):
             link = Link(name)
         elif os.path.isdir(path) and (os.path.sep in name or name.startswith('.')):
             if not is_installable_dir(path):
-                raise InstallationError("Directory %r is not installable. File 'setup.py' not found.", name)
+                raise InstallationError("Directory %r is not installable. "
+                                        "File 'setup.py' not found.", name)
             link = Link(path_to_url(name))
         elif is_archive_file(path):
             if not os.path.isfile(path):
@@ -197,6 +204,21 @@ class InstallRequirement(object):
     @property
     def setup_py(self):
         return os.path.join(self.source_dir, 'setup.py')
+
+    def serversig(self, base_url):
+        if base_url not in self._serversigs:
+            if self.req is not None:
+                sig_url = '%s/serversig/%s' % (base_url, self.url_name)
+                try:
+                    response = urlopen(sig_url)
+                    self._serversigs[base_url] = response.content
+                except (HTTPError, URLError, socket.timeout,
+                        socket.error, OSError, WindowsError,
+                        requests.RequestException):
+                    # return empty string in case this was just a
+                    # temporary connection failure
+                    return ''
+        return self._serversigs.get(base_url, '')
 
     def run_egg_info(self, force_root_egg_info=False):
         assert self.source_dir
@@ -477,11 +499,12 @@ exec(compile(open(__file__).read().replace('\\r\\n', '\\n'), __file__, 'exec'))
             config.readfp(FakeFile(dist.get_metadata_lines('entry_points.txt')))
             if config.has_section('console_scripts'):
                 for name, value in config.items('console_scripts'):
-                    paths_to_remove.add(os.path.join(bin_py, name))
+                    this_bin = os.path.join(bin_py, name)
+                    paths_to_remove.add(this_bin)
                     if sys.platform == 'win32':
-                        paths_to_remove.add(os.path.join(bin_py, name) + '.exe')
-                        paths_to_remove.add(os.path.join(bin_py, name) + '.exe.manifest')
-                        paths_to_remove.add(os.path.join(bin_py, name) + '-script.py')
+                        paths_to_remove.add(this_bin + '.exe')
+                        paths_to_remove.add(this_bin + '.exe.manifest')
+                        paths_to_remove.add(this_bin + '-script.py')
 
         paths_to_remove.remove(auto_confirm)
         self.uninstalled = paths_to_remove
@@ -785,6 +808,8 @@ class RequirementSet(object):
         self.build_dir = build_dir
         self.src_dir = src_dir
         self.download_dir = download_dir
+        if download_cache is not None:
+            download_cache = os.path.expanduser(download_cache)
         self.download_cache = download_cache
         self.upgrade = upgrade
         self.ignore_installed = ignore_installed
@@ -900,7 +925,10 @@ class RequirementSet(object):
                                        % (req_to_install, req_to_install.source_dir))
 
     def prepare_files(self, finder, force_root_egg_info=False, bundle=False):
-        """Prepare process. Create temp directories, download and/or unpack files."""
+        """
+        Prepare process. Create temp directories, download
+        and/or unpack files.
+        """
         unnamed = list(self.unnamed_requirements)
         reqs = list(self.requirements.values())
         while reqs or unnamed:
@@ -923,7 +951,7 @@ class RequirementSet(object):
                                 install = False
                             else:
                                 # Avoid the need to call find_requirement again
-                                req_to_install.url = url.url
+                                req_to_install.urls = url
 
                         if not best_installed:
                             req_to_install.conflicts_with = req_to_install.satisfied_by
@@ -975,21 +1003,39 @@ class RequirementSet(object):
                     if not os.path.exists(os.path.join(location, 'setup.py')):
                         ## FIXME: this won't upgrade when there's an existing package unpacked in `location`
                         if req_to_install.url is None:
-                            url = finder.find_requirement(req_to_install, upgrade=self.upgrade)
-                        else:
+                            urls = finder.find_requirement(req_to_install, upgrade=self.upgrade)
+                        elif req_to_install.urls:
                             ## FIXME: should req_to_install.url already be a link?
-                            url = Link(req_to_install.url)
-                            assert url
-                        if url:
-                            try:
-                                self.unpack_url(url, location, self.is_download)
-                            except HTTPError:
-                                e = sys.exc_info()[1]
-                                logger.fatal('Could not install requirement %s because of error %s'
-                                             % (req_to_install, e))
-                                raise InstallationError(
-                                    'Could not install requirement %s because of HTTP error %s for URL %s'
-                                    % (req_to_install, e, url))
+                            # print req_to_install.url
+                            urls = [Link(url.url, mirror_urls=finder.mirror_urls)
+                                    for url in req_to_install.urls]
+                        if urls:
+                            # Trying each of the returned URLs one by one
+                            for url in urls:
+                                if url.is_mirror:
+                                    if finder.verify(req_to_install, url):
+                                        logger.warn('Verifying %s: successful' % url)
+                                    else:
+                                        logger.warn('Verifying %s: failed' % url)
+                                        continue
+                                try:
+                                    self.unpack_url(url, location, self.is_download)
+                                except HTTPError:
+                                    e = sys.exc_info()[1]
+                                    logger.fatal('Could not install '
+                                        'requirement %s because of error %s' %
+                                        (req_to_install, e))
+                                    raise InstallationError('Could not '
+                                        'install requirement %s because of '
+                                        'HTTP error %s for URL %s' %
+                                        (req_to_install, e, url))
+                                else:
+                                    # stop trying after successful retrieval
+                                    break
+                            else:
+                                raise InstallationError('Could not install '
+                                    'requirement %s because no valid URLs '
+                                    'were found.' % req_to_install)
                         else:
                             unpack = False
                     if unpack:
@@ -1012,7 +1058,7 @@ class RequirementSet(object):
                                 # directory is created for packing in the bundle
                                 req_to_install.run_egg_info(force_root_egg_info=True)
                             req_to_install.assert_source_matches_version()
-                            #@@ sketchy way of identifying packages not grabbed from an index
+                            # @@ sketchy way of identifying packages not grabbed from an index
                             if bundle and req_to_install.url:
                                 self.copy_to_build_dir(req_to_install)
                                 install = False
@@ -1029,7 +1075,8 @@ class RequirementSet(object):
                     ## FIXME: shouldn't be globally added:
                     finder.add_dependency_links(req_to_install.dependency_links)
                     if (req_to_install.extras):
-                        logger.notify("Installing extra requirements: %r" % ','.join(req_to_install.extras))
+                        logger.notify("Installing extra requirements: %r" %
+                                      ','.join(req_to_install.extras))
                     if not self.ignore_dependencies:
                         for req in req_to_install.requirements(req_to_install.extras):
                             try:
@@ -1112,7 +1159,10 @@ class RequirementSet(object):
             return retval
 
     def install(self, install_options, global_options=()):
-        """Install everything in this set (after having downloaded and unpacked the packages)"""
+        """
+        Install everything in this set
+        (after having downloaded and unpacked the packages)
+        """
         to_install = [r for r in self.requirements.values()
                       if not r.satisfied_by]
 

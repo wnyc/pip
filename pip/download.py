@@ -3,12 +3,18 @@ import getpass
 import mimetypes
 import os
 import re
+import pkg_resources
 import shutil
+import socket
 import sys
 import tempfile
+
+import requests
+
 from pip.backwardcompat import (md5, copytree, xmlrpclib, urllib, urllib2,
-                                urlparse, string_types, HTTPError)
+                                urlparse)
 from pip.exceptions import InstallationError
+from pip.locations import cacert_crt_file
 from pip.util import (splitext, rmtree, format_size, display_path,
                       backup_dir, ask, ask_path_exists, unpack_file,
                       create_download_cache_folder, cache_download)
@@ -21,8 +27,67 @@ __all__ = ['xmlrpclib_transport', 'get_file_content', 'urlopen',
            'geturl', 'is_archive_file', 'unpack_vcs_link',
            'unpack_file_url', 'is_vcs_url', 'is_file_url', 'unpack_http_url']
 
+try:
+    import ssl
+except ImportError:
+    logger.fatal('WARNING! Could not import the ssl module needed to '
+                 'verify the SSL certificate of PyPI. Try installing '
+                 'it by running (requires compiler): pip install ssl')
+
+
+try:
+    pip_version = pkg_resources.get_distribution('pip').version
+except:
+    pip_version = 'unknown'
+
 
 xmlrpclib_transport = xmlrpclib.Transport()
+
+
+# CAcert Class 1 Root Certificate from
+# https://www.cacert.org/certs/root.crt
+CACERT_ROOT_CRT = """\
+-----BEGIN CERTIFICATE-----
+MIIHPTCCBSWgAwIBAgIBADANBgkqhkiG9w0BAQQFADB5MRAwDgYDVQQKEwdSb290
+IENBMR4wHAYDVQQLExVodHRwOi8vd3d3LmNhY2VydC5vcmcxIjAgBgNVBAMTGUNB
+IENlcnQgU2lnbmluZyBBdXRob3JpdHkxITAfBgkqhkiG9w0BCQEWEnN1cHBvcnRA
+Y2FjZXJ0Lm9yZzAeFw0wMzAzMzAxMjI5NDlaFw0zMzAzMjkxMjI5NDlaMHkxEDAO
+BgNVBAoTB1Jvb3QgQ0ExHjAcBgNVBAsTFWh0dHA6Ly93d3cuY2FjZXJ0Lm9yZzEi
+MCAGA1UEAxMZQ0EgQ2VydCBTaWduaW5nIEF1dGhvcml0eTEhMB8GCSqGSIb3DQEJ
+ARYSc3VwcG9ydEBjYWNlcnQub3JnMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIIC
+CgKCAgEAziLA4kZ97DYoB1CW8qAzQIxL8TtmPzHlawI229Z89vGIj053NgVBlfkJ
+8BLPRoZzYLdufujAWGSuzbCtRRcMY/pnCujW0r8+55jE8Ez64AO7NV1sId6eINm6
+zWYyN3L69wj1x81YyY7nDl7qPv4coRQKFWyGhFtkZip6qUtTefWIonvuLwphK42y
+fk1WpRPs6tqSnqxEQR5YYGUFZvjARL3LlPdCfgv3ZWiYUQXw8wWRBB0bF4LsyFe7
+w2t6iPGwcswlWyCR7BYCEo8y6RcYSNDHBS4CMEK4JZwFaz+qOqfrU0j36NK2B5jc
+G8Y0f3/JHIJ6BVgrCFvzOKKrF11myZjXnhCLotLddJr3cQxyYN/Nb5gznZY0dj4k
+epKwDpUeb+agRThHqtdB7Uq3EvbXG4OKDy7YCbZZ16oE/9KTfWgu3YtLq1i6L43q
+laegw1SJpfvbi1EinbLDvhG+LJGGi5Z4rSDTii8aP8bQUWWHIbEZAWV/RRyH9XzQ
+QUxPKZgh/TMfdQwEUfoZd9vUFBzugcMd9Zi3aQaRIt0AUMyBMawSB3s42mhb5ivU
+fslfrejrckzzAeVLIL+aplfKkQABi6F1ITe1Yw1nPkZPcCBnzsXWWdsC4PDSy826
+YreQQejdIOQpvGQpQsgi3Hia/0PsmBsJUUtaWsJx8cTLc6nloQsCAwEAAaOCAc4w
+ggHKMB0GA1UdDgQWBBQWtTIb1Mfz4OaO873SsDrusjkY0TCBowYDVR0jBIGbMIGY
+gBQWtTIb1Mfz4OaO873SsDrusjkY0aF9pHsweTEQMA4GA1UEChMHUm9vdCBDQTEe
+MBwGA1UECxMVaHR0cDovL3d3dy5jYWNlcnQub3JnMSIwIAYDVQQDExlDQSBDZXJ0
+IFNpZ25pbmcgQXV0aG9yaXR5MSEwHwYJKoZIhvcNAQkBFhJzdXBwb3J0QGNhY2Vy
+dC5vcmeCAQAwDwYDVR0TAQH/BAUwAwEB/zAyBgNVHR8EKzApMCegJaAjhiFodHRw
+czovL3d3dy5jYWNlcnQub3JnL3Jldm9rZS5jcmwwMAYJYIZIAYb4QgEEBCMWIWh0
+dHBzOi8vd3d3LmNhY2VydC5vcmcvcmV2b2tlLmNybDA0BglghkgBhvhCAQgEJxYl
+aHR0cDovL3d3dy5jYWNlcnQub3JnL2luZGV4LnBocD9pZD0xMDBWBglghkgBhvhC
+AQ0ESRZHVG8gZ2V0IHlvdXIgb3duIGNlcnRpZmljYXRlIGZvciBGUkVFIGhlYWQg
+b3ZlciB0byBodHRwOi8vd3d3LmNhY2VydC5vcmcwDQYJKoZIhvcNAQEEBQADggIB
+ACjH7pyCArpcgBLKNQodgW+JapnM8mgPf6fhjViVPr3yBsOQWqy1YPaZQwGjiHCc
+nWKdpIevZ1gNMDY75q1I08t0AoZxPuIrA2jxNGJARjtT6ij0rPtmlVOKTV39O9lg
+18p5aTuxZZKmxoGCXJzN600BiqXfEVWqFcofN8CCmHBh22p8lqOOLlQ+TyGpkO/c
+gr/c6EWtTZBzCDyUZbAEmXZ/4rzCahWqlwQ3JNgelE5tDlG+1sSPypZt90Pf6DBl
+Jzt7u0NDY8RD97LsaMzhGY4i+5jhe1o+ATc7iwiwovOVThrLm82asduycPAtStvY
+sONvRUgzEv/+PDIqVPfE94rwiCPCR/5kenHA0R6mY7AHfqQv0wGP3J8rtsYIqQ+T
+SCX8Ev2fQtzzxD72V7DX3WnRBnc0CkvSyqD/HMaMyRa+xMwyN2hzXwj7UfdJUzYF
+CpUCTPJ5GhD22Dp1nPMd8aINcGeGG7MW9S/lpOt5hvk9C8JzC6WZrG/8Z7jlLwum
+GCSNe9FINSkYQKyTYOGWhlC0elnYjyELn8+CkcY7v2vcB5G5l1YjqrZslMZIBjzk
+zk6q5PYvCdxTby78dOs6Y5nCpqyJvKeyRKANihDjbPIky/qbn3BHLt4Ui9SyIAmW
+omTxJBzcoTWcFbLUvFUufQb1nA5V9FrWk9p2rSVzTMVD
+-----END CERTIFICATE-----"""
 
 
 def get_file_content(url, comes_from=None):
@@ -48,8 +113,8 @@ def get_file_content(url, comes_from=None):
             url = path
         else:
             ## FIXME: catch some errors
-            resp = urlopen(url)
-            return geturl(resp), resp.read()
+            response = urlopen(url)
+            return response.url, response.content
     try:
         f = open(url)
         content = f.read()
@@ -70,71 +135,95 @@ class URLOpener(object):
     pip's own URL helper that adds HTTP auth and proxy support
     """
     def __init__(self):
+        self.proxies = {}
+        self.timeout = None
         self.passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
 
-    def __call__(self, url):
+    def __call__(self, url, method='get', redirect=True):
         """
         If the given url contains auth info or if a normal request gets a 401
         response, an attempt is made to fetch the resource using basic HTTP
         auth.
-
         """
         url, username, password = self.extract_credentials(url)
-        if username is None:
-            try:
-                response = urllib2.urlopen(self.get_request(url))
-            except urllib2.HTTPError:
-                e = sys.exc_info()[1]
-                if e.code != 401:
-                    raise
-                response = self.get_response(url)
-        else:
-            response = self.get_response(url, username, password)
-        return response
+        return self.get_response(url, username, password, method=method, redirect=redirect)
 
-    def get_request(self, url):
-        """
-        Wraps the URL to retrieve to protects against "creative"
-        interpretation of the RFC: http://bugs.python.org/issue8732
-        """
-        if isinstance(url, string_types):
-            url = urllib2.Request(url, headers={'Accept-encoding': 'identity'})
-        return url
-
-    def get_response(self, url, username=None, password=None):
-        """
-        does the dirty work of actually getting the rsponse object using urllib2
-        and its HTTP auth builtins.
-        """
+    def handle_401(self, url, username, password, method):
         scheme, netloc, path, query, frag = urlparse.urlsplit(url)
-        req = self.get_request(url)
-
-        stored_username, stored_password = self.passman.find_user_password(None, netloc)
         # see if we have a password stored
+        stored_username, stored_password = self.passman.find_user_password(None, netloc)
         if stored_username is None:
             if username is None and self.prompting:
                 username = urllib.quote(raw_input('User for %s: ' % netloc))
                 password = urllib.quote(getpass.getpass('Password: '))
+        else:
+            username, password = stored_username, stored_password
+        response = self.get_response(url, username, password, retry=True, method=method)
+        if response.status_code != 401:
             if username and password:
                 self.passman.add_password(None, netloc, username, password)
-            stored_username, stored_password = self.passman.find_user_password(None, netloc)
-        authhandler = urllib2.HTTPBasicAuthHandler(self.passman)
-        opener = urllib2.build_opener(authhandler)
-        # FIXME: should catch a 401 and offer to let the user reenter credentials
-        return opener.open(req)
+        return response
 
-    def setup(self, proxystr='', prompting=True):
+    def get_response(self, url, username=None, password=None,
+                     retry=False, method='get', redirect=True):
+        """
+        does the dirty work of actually getting the rsponse object using urllib2
+        and its HTTP auth builtins.
+        """
+
+        if username and password:
+            auth = (username, password)
+        else:
+            auth = None
+
+        if url.startswith('https://pypi.python.org'):
+            verify = cacert_crt_file
+        else:
+            verify = True
+
+        response = requests.request(method, url,
+            proxies=self.proxies,
+            timeout=self.timeout,
+            auth=auth,
+            verify=verify,
+            allow_redirects=redirect,
+            headers={
+                'User-Agent': 'pip/%s' % pip_version,
+            })
+
+        if response.status_code == 401:
+            if retry:
+                # catch a 401 and offer to let the user reenter credentials
+                entered = ask('Credentials were incorrect. Re-enter? (y/n) ',
+                              ('y', 'n'))
+                if entered != 'y':
+                    raise InstallationError(
+                        "The entered credentials for %s were wrong." % url)
+                username = password = None
+            return self.handle_401(url, username, password, method)
+
+        return response
+
+    def setup(self, proxystr='', timeout=None, prompting=True):
         """
         Sets the proxy handler given the option passed on the command
         line.  If an empty string is passed it looks at the HTTP_PROXY
         environment variable.
         """
         self.prompting = prompting
+        self.timeout = timeout
         proxy = self.get_proxy(proxystr)
-        if proxy:
-            proxy_support = urllib2.ProxyHandler({"http": proxy, "ftp": proxy, "https": proxy})
-            opener = urllib2.build_opener(proxy_support, urllib2.CacheFTPHandler)
-            urllib2.install_opener(opener)
+        self.proxies = {
+            'http': proxy,
+            'https': proxy,
+        }
+        if not os.path.exists(cacert_crt_file):
+            # write cacert root cert to temporary file
+            cacert_file = open(cacert_crt_file, 'w')
+            try:
+                cacert_file.write(CACERT_ROOT_CRT)
+            finally:
+                cacert_file.close()
 
     def parse_credentials(self, netloc):
         if "@" in netloc:
@@ -204,7 +293,7 @@ def is_url(name):
     if ':' not in name:
         return False
     scheme = name.split(':', 1)[0].lower()
-    return scheme in ['http', 'https', 'file', 'ftp'] + vcs.all_schemes
+    return scheme in ['http', 'https', 'file'] + vcs.all_schemes
 
 
 def url_to_path(url):
@@ -322,10 +411,10 @@ def is_file_url(link):
 
 
 def _check_md5(download_hash, link):
-    download_hash = download_hash.hexdigest()
-    if download_hash != link.md5_hash:
-        logger.fatal("MD5 hash of the package %s (%s) doesn't match the expected hash %s!"
-                     % (link, download_hash, link.md5_hash))
+    digest = download_hash.hexdigest()
+    if digest != link.md5_hash:
+        logger.fatal("MD5 hash of the package %s (%s) doesn't match the "
+                     "expected hash %s!" % (link, digest, link.md5_hash))
         raise InstallationError('Bad MD5 hash for package %s' % link)
 
 
@@ -347,12 +436,12 @@ def _download_url(resp, link, temp_location):
     if link.md5_hash:
         download_hash = md5()
     try:
-        total_length = int(resp.info()['content-length'])
+        total_length = int(resp.headers['content-length'])
     except (ValueError, KeyError, TypeError):
         total_length = 0
     downloaded = 0
     show_progress = total_length > 40*1000 or not total_length
-    show_url = link.show_url
+    show_url = link.url
     try:
         if show_progress:
             ## FIXME: the URL can get really long in this message:
@@ -365,7 +454,7 @@ def _download_url(resp, link, temp_location):
         logger.debug('Downloading from URL %s' % link)
 
         while True:
-            chunk = resp.read(4096)
+            chunk = resp.raw.read(4096)
             if not chunk:
                 break
             downloaded += len(chunk)
@@ -413,14 +502,13 @@ def unpack_http_url(link, location, download_cache, download_dir=None):
     target_file = None
     download_hash = None
     if download_cache:
-        target_file = os.path.join(download_cache,
-                                   urllib.quote(target_url, ''))
+        cache_filename = list(filter(None, target_url.split('/')))[-1]
+        target_file = os.path.join(download_cache, cache_filename)
         if not os.path.isdir(download_cache):
             create_download_cache_folder(download_cache)
-    if (target_file
-        and os.path.exists(target_file)
-        and os.path.exists(target_file + '.content-type')):
-        fp = open(target_file+'.content-type')
+    if (target_file and os.path.exists(target_file)
+            and os.path.exists(target_file + '.content-type')):
+        fp = open(target_file + '.content-type')
         content_type = fp.read().strip()
         fp.close()
         if link.md5_hash:
@@ -428,11 +516,11 @@ def unpack_http_url(link, location, download_cache, download_dir=None):
         temp_location = target_file
         logger.notify('Using download cache from %s' % target_file)
     else:
-        resp = _get_response_from_url(target_url, link)
-        content_type = resp.info()['content-type']
+        response = _get_response_from_url(target_url, link)
+        content_type = response.headers['content-type']
         filename = link.filename  # fallback
         # Have a look at the Content-Disposition header for a better guess
-        content_disposition = resp.info().get('content-disposition')
+        content_disposition = response.headers.get('content-disposition')
         if content_disposition:
             type, params = cgi.parse_header(content_disposition)
             # We use ``or`` here because we don't want to use an "empty" value
@@ -443,12 +531,12 @@ def unpack_http_url(link, location, download_cache, download_dir=None):
             ext = mimetypes.guess_extension(content_type)
             if ext:
                 filename += ext
-        if not ext and link.url != geturl(resp):
-            ext = os.path.splitext(geturl(resp))[1]
+        if not ext and link.url != geturl(response):
+            ext = os.path.splitext(geturl(response))[1]
             if ext:
                 filename += ext
         temp_location = os.path.join(temp_dir, filename)
-        download_hash = _download_url(resp, link, temp_location)
+        download_hash = _download_url(response, link, temp_location)
     if link.md5_hash:
         _check_md5(download_hash, link)
     if download_dir:
@@ -476,6 +564,9 @@ def _get_response_from_url(target_url, link):
     return resp
 
 
-class Urllib2HeadRequest(urllib2.Request):
-    def get_method(self):
-        return "HEAD"
+def valid_ipv6_addr(addr):
+    try:
+        addr = socket.inet_pton(socket.AF_INET6, addr)
+    except socket.error: # not a valid address
+        return False
+    return True

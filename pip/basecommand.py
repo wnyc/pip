@@ -12,7 +12,8 @@ from pip.baseparser import parser, ConfigOptionParser, UpdatingDefaultsHelpForma
 from pip.download import urlopen
 from pip.exceptions import (BadCommand, InstallationError, UninstallationError,
                             CommandError)
-from pip.backwardcompat import StringIO, walk_packages
+from pip.locations import serverkey_file
+from pip.backwardcompat import StringIO, walk_packages, u
 from pip.status_codes import SUCCESS, ERROR, UNKNOWN_ERROR, VIRTUALENV_NOT_FOUND
 
 
@@ -56,6 +57,24 @@ class Command(object):
         options.quiet += initial_options.quiet
         options.verbose += initial_options.verbose
 
+    def refresh_serverkey(self, url='https://pypi.python.org/serverkey'):
+        serverkey_cache = open(serverkey_file, 'wb')
+        try:
+            try:
+                content = urlopen(url).content
+                serverkey_cache.write(content)
+            except Exception:
+                e = sys.exc_info()[1]
+                raise InstallationError('Could not refresh local cache (%s) '
+                                        'of PyPI server key (%s): %s' %
+                                        (serverkey_file, url, e))
+            else:
+                logger.notify('Refreshed local cache (%s) of '
+                              'PyPI server key (%s):\n\n%s' %
+                              (serverkey_file, url, u(content)))
+        finally:
+            serverkey_cache.close()
+
     def setup_logging(self):
         pass
 
@@ -88,15 +107,18 @@ class Command(object):
                 logger.fatal('Could not find an activated virtualenv (required).')
                 sys.exit(VIRTUALENV_NOT_FOUND)
 
+        if not os.path.exists(serverkey_file) or options.refresh_serverkey:
+            self.refresh_serverkey()
+
         if options.log:
             log_fp = open_logfile(options.log, 'a')
             logger.consumers.append((logger.DEBUG, log_fp))
         else:
             log_fp = None
 
-        socket.setdefaulttimeout(options.timeout or None)
-
-        urlopen.setup(proxystr=options.proxy, prompting=not options.no_input)
+        urlopen.setup(proxystr=options.proxy,
+            timeout=options.timeout or None,
+            prompting=not options.no_input)
 
         exit = SUCCESS
         store_log = False
