@@ -52,6 +52,9 @@ class PackageFinder(object):
             logger.info('Using PyPI mirrors: %s' % ', '.join(self.mirror_urls))
         else:
             self.mirror_urls = []
+        self._pending_queue = Queue()
+        self._page_getting_threads = []
+
 
     def add_dependency_links(self, links):
         ## FIXME: this shouldn't be global list this, it should only
@@ -216,38 +219,41 @@ class PackageFinder(object):
     def _get_pages(self, locations, req):
         """Returns a list of HTMLPage objects from the given locations, skipping
         locations that have errors, and adding download/homepage links"""
-        pending_queue = Queue()
-        for location in locations:
-            pending_queue.put(location)
+
         done = []
         seen = set()
-        self._page_getting_threads = []
-        for i in range(10):
+
+        # set up worker threads if they haven't already been
+        while len(self._page_getting_threads) < 10:
             t = threading.Thread(target=self._get_queued_page, args=(
-                req, pending_queue, done, seen))
+                req, self._pending_queue, done, seen))
             t.setDaemon(True)
             self._page_getting_threads.append(t)
             t.start()
-        pending_queue.join()
+
+        for location in locations:
+            self._pending_queue.put(location)
+        self._pending_queue.join()
+
         return done
 
-    def _get_queued_page(self, req, pending_queue, done, seen):
+    def _get_queued_page(self, req, done, seen):
         while 1:
-            pages_pending = pending_queue.qsize()
-            location = pending_queue.get()
+            pages_pending = self._pending_queue.qsize()
+            location = self._pending_queue.get()
             if location in seen:
-                pending_queue.task_done()
+                self._pending_queue.task_done()
                 continue
             seen.add(location)
             page = self._get_page(location, req)
             if page is None:
-                pending_queue.task_done()
+                self._pending_queue.task_done()
                 continue
             done.append(page)
 
             for link in page.rel_links():
-                pending_queue.put(link)
-            pending_queue.task_done()
+                self._pending_queue.put(link)
+            self._pending_queue.task_done()
 
 
     _egg_fragment_re = re.compile(r'#egg=([^&]*)')
