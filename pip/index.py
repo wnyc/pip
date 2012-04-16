@@ -52,6 +52,13 @@ class PackageFinder(object):
             logger.info('Using PyPI mirrors: %s' % ', '.join(self.mirror_urls))
         else:
             self.mirror_urls = []
+
+        # These attributes are used by _get_pages to handle worker thread management
+        # that method could be more cleanly factored into its own utility class
+        # which doesn't store state on teh PackageFinder instance
+        self._current_req = None
+        self._pages_done = []
+        self._seen_locations = set()
         self._pending_queue = Queue()
         self._page_getting_threads = []
 
@@ -220,13 +227,12 @@ class PackageFinder(object):
         """Returns a list of HTMLPage objects from the given locations, skipping
         locations that have errors, and adding download/homepage links"""
 
-        done = []
-        seen = set()
-
+        self._current_req = req
+        self._pages_done = []
+        self._seen_locations = set()
         # set up worker threads if they haven't already been
         while len(self._page_getting_threads) < 10:
-            t = threading.Thread(target=self._get_queued_page, args=(
-                req, done, seen))
+            t = threading.Thread(target=self._get_queued_page)
             t.setDaemon(True)
             self._page_getting_threads.append(t)
             t.start()
@@ -235,20 +241,20 @@ class PackageFinder(object):
             self._pending_queue.put(location)
         self._pending_queue.join()
 
-        return done
+        return self._pages_done
 
-    def _get_queued_page(self, req, done, seen):
+    def _get_queued_page(self):
         while 1:
             location = self._pending_queue.get()
-            if location in seen:
+            if location in self._seen_locations:
                 self._pending_queue.task_done()
                 continue
-            seen.add(location)
-            page = self._get_page(location, req)
+            self._seen_locations.add(location)
+            page = self._get_page(location, self._current_req)
             if page is None:
                 self._pending_queue.task_done()
                 continue
-            done.append(page)
+            self._pages_done.append(page)
 
             for link in page.rel_links():
                 self._pending_queue.put(link)
