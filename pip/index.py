@@ -53,16 +53,6 @@ class PackageFinder(object):
         else:
             self.mirror_urls = []
 
-        # These attributes are used by _get_pages to handle worker thread management
-        # that method could be more cleanly factored into its own utility class
-        # which doesn't store state on teh PackageFinder instance
-        self._current_req = None
-        self._pages_done = []
-        self._seen_locations = set()
-        self._pending_queue = Queue()
-        self._page_getting_threads = []
-
-
     def add_dependency_links(self, links):
         ## FIXME: this shouldn't be global list this, it should only
         ## apply to requirements of the package that specifies the
