@@ -29,7 +29,7 @@ from pip.download import urlopen, path_to_url2, url_to_path, geturl, Urllib2Head
 __all__ = ['PackageFinder']
 
 
-DEFAULT_MIRROR_URL = "last.pypi.python.org"
+DEFAULT_MIRROR_HOSTNAME = "last.pypi.python.org"
 
 
 class PackageFinder(object):
@@ -661,11 +661,18 @@ class Link(object):
             return None
         return match.group(1)
 
-    _md5_re = re.compile(r'md5=([a-f0-9]+)')
+    _hash_re = re.compile(r'(sha1|sha224|sha384|sha256|sha512|md5)=([a-f0-9]+)')
 
     @property
-    def md5_hash(self):
-        match = self._md5_re.search(self.url)
+    def hash(self):
+        match = self._hash_re.search(self.url)
+        if match:
+            return match.group(2)
+        return None
+
+    @property
+    def hash_name(self):
+        match = self._hash_re.search(self.url)
         if match:
             return match.group(1)
         return None
@@ -712,14 +719,17 @@ def get_mirrors(hostname=None):
     Originally written for the distutils2 project by Alexis Metaireau.
     """
     if hostname is None:
-        hostname = DEFAULT_MIRROR_URL
+        hostname = DEFAULT_MIRROR_HOSTNAME
 
     # return the last mirror registered on PyPI.
+    last_mirror_hostname = None
     try:
-        hostname = socket.gethostbyname_ex(hostname)[0]
+        last_mirror_hostname = socket.gethostbyname_ex(hostname)[0]
     except socket.gaierror:
         return []
-    end_letter = hostname.split(".", 1)
+    if not last_mirror_hostname or last_mirror_hostname == DEFAULT_MIRROR_HOSTNAME:
+        last_mirror_hostname = "z.pypi.python.org"
+    end_letter = last_mirror_hostname.split(".", 1)
 
     # determine the list from the last one.
     return ["%s.%s" % (s, end_letter[1]) for s in string_range(end_letter[0])]

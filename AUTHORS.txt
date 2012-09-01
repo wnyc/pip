@@ -6,9 +6,11 @@ Armin Ronacher
 Brian Rosner
 Carl Meyer
 Christian Oudard
+Clay McClure
 Cody Soyland
 Daniel Holth
 Dave Abrahams
+Donald Stufft
 Francesco
 Hugo Lopes Tavares
 Ian Bicking
@@ -39,6 +41,7 @@ Paul Nasrat
 Paul Oswald
 Paul van der Linden
 Peter Waller
+Phil Whelan
 Piet Delport
 Qiangning Hong
 Rene Dudfield
