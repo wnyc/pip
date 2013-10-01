@@ -69,6 +69,7 @@ class InstallCommand(Command):
             help="Download packages into <dir> instead of installing them, regardless of what's already installed.")
 
         cmd_opts.add_option(cmdoptions.download_cache.make())
+        cmd_opts.add_option(cmdoptions.cloud_cache.make())
 
         cmd_opts.add_option(
             '--src', '--source', '--source-dir', '--source-directory',
@@ -216,6 +217,7 @@ class InstallCommand(Command):
             src_dir=options.src_dir,
             download_dir=options.download_dir,
             download_cache=options.download_cache,
+            cloud_cache=options.cloud_cache,
             upgrade=options.upgrade,
             as_egg=options.as_egg,
             ignore_installed=options.ignore_installed,

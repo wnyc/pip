@@ -603,11 +603,17 @@ def create_download_cache_folder(folder):
 
 
 def cache_download(target_file, temp_location, content_type):
-    logger.notify('Storing download in cache at %s' % display_path(target_file))
+    logger.notify('Storing download in local cache at %s' % display_path(target_file))
     shutil.copyfile(temp_location, target_file)
     fp = open(target_file+'.content-type', 'w')
     fp.write(content_type)
     fp.close()
+
+def cloud_download(bucket, temp_location, content_type):
+    logger.notify('Storing download in cloud cache')
+    name = os.path.basename(temp_location)
+    bucket[name] = open(temp_location).read()
+    bucket[name+'.content-type'] = content_type
 
 
 def unpack_file(filename, location, content_type, link):

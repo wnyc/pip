@@ -4,6 +4,7 @@ import hashlib
 import getpass
 import mimetypes
 import os
+import os.path
 import platform
 import re
 import shutil
@@ -473,7 +474,7 @@ def _copy_file(filename, location, content_type, link):
         logger.notify('Saved %s' % display_path(download_location))
 
 
-def unpack_http_url(link, location, download_cache, download_dir=None,
+def unpack_http_url(link, location, download_cache, cloud_cache, download_dir=None,
                     session=None):
     if session is None:
         session = PipSession()
@@ -486,6 +487,12 @@ def unpack_http_url(link, location, download_cache, download_dir=None,
     cache_file = None
     cache_content_type_file = None
     download_hash = None
+    if cloud_cache is not None:
+        if not download_cache:
+            cloud_cache = None
+            logger.warn('Disabling cloud_cache because download_cache is not set')
+        else:
+            cloud_cache = cloudydict.factory(cloud_cache)()
     if download_cache:
         cache_file = os.path.join(download_cache,
                                    urllib.quote(target_url, ''))
@@ -496,6 +503,17 @@ def unpack_http_url(link, location, download_cache, download_dir=None,
             )
         if not os.path.isdir(download_cache):
             create_download_cache_folder(download_cache)
+
+        if cloud_cache is not None and not already_cached:
+            logger.notify('Retriving from cloud cache')
+            cache_file = os.path.join(download_cache,
+                                      urllib.quote(target_url, ''))
+            cache_content_type_file = cache_file + '.content-type'
+            try:
+                open(cache_file, "w+").write(cloud_cache[os.path.basename(cache_file)])
+                open(cache_content_type_file, "w+").write(os.path.basename(cloud_cache[cache_content_type_file]))
+            except KeyError:
+                pass
 
     already_downloaded = None
     if download_dir:

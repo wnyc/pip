@@ -4,6 +4,8 @@ Changelog
 1.5 (unreleased)
 ----------------
 
+* Added cloudydict based file caching --cache=.... 
+
 * **BACKWARD INCOMPATIBLE** pip no longer supports the ``--use-mirrors``,
   ``-M``, and ``--mirrors`` flags. The mirroring support has been removed. In
   order to use a mirror specify it as the primary index with ``-i`` or

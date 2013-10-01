@@ -71,6 +71,7 @@ setup(name="pip",
           'pip%s=pip:main' % sys.version[:3]]),
       tests_require=tests_require,
       zip_safe=False,
+      requirements = ['cloudydict',],
       extras_require={
           'testing': tests_require,
       },

@@ -264,6 +264,12 @@ download_cache = OptionMaker(
     default=None,
     help='Cache downloaded packages in <dir>.')
 
+cloud_cache = OptionMaker(
+    '--cloud-cache',
+    dest='cloud_cache',
+    default=None,
+    help='Cloud cache url (i.e. s3://bucket/)')
+
 no_deps = OptionMaker(
     '--no-deps', '--no-dependencies',
     dest='ignore_dependencies',

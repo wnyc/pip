@@ -851,14 +851,15 @@ class Requirements(object):
 
 class RequirementSet(object):
 
-    def __init__(self, build_dir, src_dir, download_dir, download_cache=None,
+    def __init__(self, build_dir, src_dir, download_dir, download_cache=None, cloud_cache=None,
                  upgrade=False, ignore_installed=False, as_egg=False, target_dir=None,
                  ignore_dependencies=False, force_reinstall=False, use_user_site=False,
                  session=None):
         self.build_dir = build_dir
         self.src_dir = src_dir
         self.download_dir = download_dir
-        self.download_cache = download_cache
+        self.download_cache = download_cache,
+        self.cloud_cache = cloud_cache
         self.upgrade = upgrade
         self.ignore_installed = ignore_installed
         self.force_reinstall = force_reinstall
@@ -1234,8 +1235,9 @@ class RequirementSet(object):
             return unpack_file_url(link, loc)
         else:
             if self.download_cache:
+                print self.download_cache
                 self.download_cache = os.path.expanduser(self.download_cache)
-            retval = unpack_http_url(link, location, self.download_cache, self.download_dir, self.session)
+            retval = unpack_http_url(link, location, self.download_cache, self.cloud_cache, self.download_dir, self.session)
             if only_download:
                 write_delete_marker_file(location)
             return retval

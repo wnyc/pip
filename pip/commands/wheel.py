@@ -57,6 +57,7 @@ class WheelCommand(Command):
             help="Extra arguments to be supplied to 'setup.py bdist_wheel'.")
         cmd_opts.add_option(cmdoptions.requirements.make())
         cmd_opts.add_option(cmdoptions.download_cache.make())
+        cmd_opts.add_option(cmdoptions.cloud_cache.make())
         cmd_opts.add_option(cmdoptions.no_deps.make())
         cmd_opts.add_option(cmdoptions.build_dir.make())
 
@@ -127,6 +128,7 @@ class WheelCommand(Command):
             src_dir=None,
             download_dir=None,
             download_cache=options.download_cache,
+            cloud_cache=options.cloud_cache,
             ignore_dependencies=options.ignore_dependencies,
             ignore_installed=True,
             session=session,
