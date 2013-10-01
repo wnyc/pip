@@ -858,7 +858,7 @@ class RequirementSet(object):
         self.build_dir = build_dir
         self.src_dir = src_dir
         self.download_dir = download_dir
-        self.download_cache = download_cache,
+        self.download_cache = download_cache
         self.cloud_cache = cloud_cache
         self.upgrade = upgrade
         self.ignore_installed = ignore_installed

@@ -612,8 +612,9 @@ def cache_download(target_file, temp_location, content_type):
 def cloud_download(bucket, temp_location, content_type):
     logger.notify('Storing download in cloud cache')
     name = os.path.basename(temp_location)
-    bucket[name] = open(temp_location).read()
-    bucket[name+'.content-type'] = content_type
+    if name not in bucket or (name + '.content-type') not in bucket:
+        bucket[name] = open(temp_location).read()
+        bucket[name+'.content-type'] = content_type
 
 
 def unpack_file(filename, location, content_type, link):

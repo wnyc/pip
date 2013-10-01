@@ -1,3 +1,4 @@
+import cloudydict
 import cgi
 import email.utils
 import hashlib
@@ -17,7 +18,7 @@ from pip.backwardcompat import urllib, urlparse, raw_input
 from pip.exceptions import InstallationError, HashMismatch
 from pip.util import (splitext, rmtree, format_size, display_path,
                       backup_dir, ask_path_exists, unpack_file,
-                      create_download_cache_folder, cache_download)
+                      create_download_cache_folder, cache_download, cloud_download)
 from pip.vcs import vcs
 from pip.log import logger
 from pip.vendor import requests
@@ -505,15 +506,20 @@ def unpack_http_url(link, location, download_cache, cloud_cache, download_dir=No
             create_download_cache_folder(download_cache)
 
         if cloud_cache is not None and not already_cached:
-            logger.notify('Retriving from cloud cache')
-            cache_file = os.path.join(download_cache,
-                                      urllib.quote(target_url, ''))
-            cache_content_type_file = cache_file + '.content-type'
-            try:
-                open(cache_file, "w+").write(cloud_cache[os.path.basename(cache_file)])
-                open(cache_content_type_file, "w+").write(os.path.basename(cloud_cache[cache_content_type_file]))
-            except KeyError:
-                pass
+            if (os.path.basename(urllib.unquote(cache_file)) not in cloud_cache or 
+                os.path.basename(urllib.unquote(cache_content_type_file)) not in cloud_cache):
+                logger.notify('File absent from cloud cache: ' + os.path.basename(cache_file) + ' or ' + os.path.basename(cache_content_type_file))
+            else:
+                logger.notify('Retriving from cloud cache')
+                cache_file = os.path.join(download_cache,
+                                          urllib.quote(target_url, ''))
+                cache_content_type_file = cache_file + '.content-type'
+                try:
+                    open(cache_file, "w+").write(cloud_cache[os.path.basename(urllib.unquote(cache_file))].read())
+                    open(cache_content_type_file, "w+").write(cloud_cache[os.path.basename(urllib.unquote(cache_content_type_file))].read())
+                    already_cached = True
+                except KeyError:
+                    already_cached = False
 
     already_downloaded = None
     if download_dir:
@@ -596,6 +602,7 @@ def unpack_http_url(link, location, download_cache, cloud_cache, download_dir=No
     unpack_file(temp_location, location, content_type, link)
     if cache_file and not already_cached:
         cache_download(cache_file, temp_location, content_type)
+        cloud_download(cloud_cache, temp_location, content_type)
     if not (already_cached or already_downloaded):
         os.unlink(temp_location)
     os.rmdir(temp_dir)
